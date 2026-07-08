@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사다리 타기 확률 시뮬레이터</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .description {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        /* 설정 영역 */
+        .setup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .input-group label {
+            font-weight: bold;
+            color: #34495e;
+            font-size: 14px;
+        }
+        input[type="number"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #bdc3c7;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .btn-wrapper {
+            display: flex;
+            align-items: flex-end;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #27ae60;
+        }
+        /* 결과 뷰포트 (그래프 및 표) */
+        .result-section {
+            display: none; /* 초기에는 숨김 */
+            margin-top: 20px;
+        }
+        .content-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        @media (max-width: 768px) {
+            .content-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+        .chart-container {
+            background: #fdfdfd;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            min-height: 300px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+        th {
+            background-color: #2c3e50;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🪜 사다리 타기 확률 시뮬레이터</h1>
+    <div class="description">조건: 꽝의 위치는 항상 가장 왼쪽(1번 도착지)으로 고정됩니다.</div>
+    
+    <div class="setup-grid">
+        <div class="input-group">
+            <label for="nodeCount">출발점/도착점 개수</label>
+            <input type="number" id="nodeCount" value="5" min="2" max="30">
+        </div>
+        <div class="input-group">
+            <label for="ladderHeight">사다리 줄 개수 (높이)</label>
+            <input type="number" id="ladderHeight" value="10" min="1" max="100">
+        </div>
+        <div class="input-group">
+            <label for="trialCount">시뮬레이션 실행 횟수</label>
+            <input type="number" id="trialCount" value="5000" min="1" max="100000">
+        </div>
+        <div class="btn-wrapper">
+            <button onclick="runSimulation()">시뮬레이션 시작</button>
+        </div>
+    </div>
+
+    <div class="result-section" id="resultSection">
+        <h2>📊 시뮬레이션 결과 분석</h2>
+        <div class="content-layout">
+            <div class="chart-container">
+                <canvas id="probabilityChart"></canvas>
+            </div>
+            <div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>출발점</th>
+                            <th>'꽝' 당첨 횟수</th>
+                            <th>당첨 확률</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultBody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Chart.js 인스턴스를 전역 관리 (재실행 시 이전 차트 파괴용)
+let currentChart = null;
+
+function runSimulation() {
+    // 입력값 가져오기
+    const numLines = parseInt(document.getElementById('nodeCount').value);
+    const ladderHeight = parseInt(document.getElementById('ladderHeight').value);
+    const trials = parseInt(document.getElementById('trialCount').value);
+
+    // 예외 처리 유효성 검사
+    if (isNaN(numLines) || numLines < 2) { alert('출발점은 최소 2개 이상이어야 합니다.'); return; }
+    if (isNaN(ladderHeight) || ladderHeight < 1) { alert('사다리 높이는 1 이상이어야 합니다.'); return; }
+    if (isNaN(trials) || trials <= 0) { alert('실행 횟수를 올바르게 입력해주세요.'); return; }
+
+    const failIndex = 0; // 꽝의 위치: 제일 왼쪽 (인덱스 0)
+    let failCounts = new Array(numLines).fill(0); // 결과 저장 배열 초기화
+
+    // 대량 시뮬레이션 루프 수행
+    for (let t = 0; t < trials; t++) {
+        
+        // 1. 해당 판의 무작위 사다리 배열 생성 (중복 발판 방지 로직 포함)
+        let ladder = [];
+        for (let h = 0; h < ladderHeight; h++) {
+            let row = new Array(numLines - 1).fill(false);
+            for (let i = 0; i < numLines - 1; i++) {
+                if (i > 0 && row[i-1]) {
+                    row[i] = false; // 왼쪽에 이미 다리가 있다면 연속 생성 불가
+                } else {
+                    row[i] = Math.random() < 0.5; // 50% 확률로 가로 다리 생성
+                }
+            }
+            ladder.push(row);
+        }
+
+        // 2. 각 출발점(0 ~ n-1)에서 아래로 추적 시작
+        for (let start = 0; start < numLines; start++) {
+            let currentLine = start;
+            
+            for (let h = 0; h < ladderHeight; h++) {
+                // 우측 이동 가능 여부 체크
+                if (currentLine < numLines - 1 && ladder[h][currentLine]) {
+                    currentLine++;
+                } 
+                // 좌측 이동 가능 여부 체크
+                else if (currentLine > 0 && ladder[h][currentLine - 1]) {
+                    currentLine--;
+                }
+            }
+
+            // 최종 도착지가 '꽝'(제일 왼쪽 0번)이면 카운트 증가
+            if (currentLine === failIndex) {
+                failCounts[start]++;
+            }
+        }
+    }
+
+    // 3. 화면에 데이터 테이블(표) 업데이트
+    const resultBody = document.getElementById('resultBody');
+    resultBody.innerHTML = ''; 
+
+    let chartLabels = [];
+    let chartData = [];
+
+    for (let i = 0; i < numLines; i++) {
+        const percentage = ((failCounts[i] / trials) * 100).toFixed(2);
+        chartLabels.push(`${i + 1}번 출발점`);
+        chartData.push(percentage);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${i + 1}번</strong></td>
+            <td class="highlight">${failCounts[i].toLocaleString()} 회</td>
+            <td>${percentage} %</td>
+        `;
+        resultBody.appendChild(row);
+    }
+
+    // 4. Chart.js를 이용한 시각화 그래프 그리기
+    const ctx = document.getElementById('probabilityChart').getContext('2d');
+    
+    // 이미 차트가 존재한다면 덮어쓰기 오류 방지를 위해 기존 차트 삭제
+    if (currentChart) {
+        currentChart.destroy();
+    }
+
+    currentChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: chartLabels,
+            datasets: [{
+                label: "출발점별 '꽝' 당첨 확률 (%)",
+                data: chartData,
+                backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                borderColor: 'rgba(41, 128, 185, 1)',
+                borderWidth: 1,
+                borderRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: '확률 (%)', font: { weight: 'bold' } }
+                }
+            },
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+    });
+
+    // 결과 창 표시
+    document.getElementById('resultSection').style.display = 'block';
+}
+</script>
+
+</body>
+</html>
